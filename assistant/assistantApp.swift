@@ -45,8 +45,20 @@ struct assistantApp: App {
     }
 
     private func handleHotkeyPressed() {
+        // Get the user's preferred extraction method
+        let methodString = UserDefaults.standard.string(forKey: "extractionMethod") ?? "hybrid"
+        let method: AccessibilityTextExtractor.ExtractionMethod
+        switch methodString {
+        case "accessibility":
+            method = .accessibility
+        case "ocr":
+            method = .ocr
+        default:
+            method = .hybrid
+        }
+
         // Extract text from the focused application
-        let extractedText = AccessibilityTextExtractor.extractTextFromFocusedApp()
+        let extractedText = AccessibilityTextExtractor.extractTextFromFocusedApp(method: method)
 
         // Display the extracted text
         textDisplayController.show(text: extractedText)

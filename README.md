@@ -5,7 +5,11 @@ A macOS application that allows you to extract text content from any application
 ## Features
 
 - **Global Hotkey**: Press `⌘ + ⇧ + E` from any application to extract visible text
-- **Accessibility API**: Uses macOS Accessibility API to extract text from focused windows
+- **Multiple Extraction Methods**:
+  - **Hybrid Mode (Default)**: Intelligently tries Accessibility API first, falls back to OCR for browsers and complex apps
+  - **Accessibility API**: Fast extraction using native macOS Accessibility API
+  - **OCR Mode**: Screen capture with optical character recognition for browsers and apps that don't expose text
+- **Browser Support**: Works with Safari, Chrome, Firefox, and other browsers using OCR technology
 - **Floating Display Window**: Shows extracted text in a floating, resizable window
 - **Copy to Clipboard**: Easily copy extracted text with one click
 - **Pin Window**: Keep the extraction window on top of other windows
@@ -20,16 +24,27 @@ Open the project in Xcode and build it:
 open assistant.xcodeproj
 ```
 
-### 2. Grant Accessibility Permissions
+### 2. Grant Required Permissions
 
-When you first run the application and try to use the text extraction feature, macOS will prompt you to grant Accessibility permissions.
+The app requires different permissions depending on the extraction method you use:
 
-You can also manually grant permissions:
+#### Accessibility Permissions (Required for Accessibility API and Hybrid mode)
 
 1. Open **System Settings**
 2. Go to **Privacy & Security**
 3. Click on **Accessibility**
 4. Add the Assistant app and enable it
+
+The app will automatically prompt you when this permission is needed.
+
+#### Screen Recording Permissions (Required for OCR and Hybrid mode)
+
+1. Open **System Settings**
+2. Go to **Privacy & Security**
+3. Click on **Screen Recording**
+4. Add the Assistant app and enable it
+
+This permission is necessary for capturing window screenshots to perform OCR. The app will prompt you when this permission is needed.
 
 ### 3. Disable App Sandbox (if needed)
 
@@ -37,18 +52,39 @@ The app has been configured to run without sandboxing to allow global hotkey reg
 
 ## How to Use
 
+### Choosing an Extraction Method
+
+In the main app window, you can select from three extraction methods:
+
+1. **Hybrid (Smart)** - Recommended for most users
+   - Tries Accessibility API first (fast and accurate)
+   - Automatically falls back to OCR if Accessibility API returns limited results
+   - Best for general use across all applications including browsers
+
+2. **Accessibility API** - Best for native apps
+   - Fast and lightweight
+   - Works great with native macOS apps and text editors
+   - May not work well with browsers or complex UI
+
+3. **OCR (Screen Capture)** - Best for browsers
+   - Captures the screen and uses optical character recognition
+   - Works with all browsers (Safari, Chrome, Firefox, etc.)
+   - Slower but more universal
+
 ### Using the Global Hotkey
 
 1. Run the Assistant app
-2. Switch to any application you want to extract text from
-3. Press `⌘ + ⇧ + E`
-4. The extracted text will appear in a floating window
+2. Select your preferred extraction method
+3. Switch to any application you want to extract text from (e.g., Safari, Chrome, a text editor)
+4. Press `⌘ + ⇧ + E`
+5. The extracted text will appear in a floating window
 
 ### Using the Test Button
 
 1. Run the Assistant app
-2. Click the **"Test Text Extraction"** button in the main window
-3. The app will extract text from the currently focused window (which will be the Assistant app itself)
+2. Select your preferred extraction method
+3. Click the **"Test Text Extraction"** button in the main window
+4. The app will extract text from the currently focused window
 
 ## Features of the Extraction Window
 
@@ -66,10 +102,17 @@ The app has been configured to run without sandboxing to allow global hotkey reg
    - Hotkey: Command + Shift + E (⌘ + ⇧ + E)
    - Uses Carbon Event Manager for system-wide key monitoring
 
-2. **AccessibilityTextExtractor.swift**: Extracts text using macOS Accessibility API
-   - Recursively traverses UI element hierarchy
-   - Extracts values, titles, descriptions, and selected text
-   - Handles focused elements, windows, and main windows
+2. **AccessibilityTextExtractor.swift**: Extracts text using multiple methods
+   - **Accessibility API Mode**: Recursively traverses UI element hierarchy
+     - Extracts values, titles, descriptions, and selected text
+     - Handles focused elements, windows, and main windows
+   - **OCR Mode**: Uses Vision framework for optical character recognition
+     - Captures window screenshots using CGWindowListCreateImage
+     - Performs text recognition with VNRecognizeTextRequest
+     - Sorts detected text by position (top-to-bottom, left-to-right)
+   - **Hybrid Mode**: Intelligently combines both approaches
+     - Tries Accessibility API first for performance
+     - Falls back to OCR if limited results detected
 
 3. **TextDisplayWindow.swift**: Displays extracted text in a floating window
    - Floating window with pin capability
@@ -78,8 +121,9 @@ The app has been configured to run without sandboxing to allow global hotkey reg
    - Copy to clipboard functionality
 
 4. **Info.plist**: Contains privacy usage descriptions
-   - NSAccessibilityUsageDescription
-   - NSAppleEventsUsageDescription
+   - NSAccessibilityUsageDescription (for Accessibility API)
+   - NSAppleEventsUsageDescription (for Apple Events)
+   - NSScreenCaptureUsageDescription (for OCR screen capture)
 
 5. **assistant.entitlements**: App capabilities
    - App Sandbox disabled for global hotkeys
@@ -95,9 +139,18 @@ The app has been configured to run without sandboxing to allow global hotkey reg
 
 ### No Text Extracted
 
-- Some applications may not expose their text through Accessibility API
-- Try clicking on the text area in the target application first
-- Some secure applications (like password managers) may block text extraction for security
+- **For Accessibility API mode**: Some applications may not expose their text through Accessibility API
+  - Try clicking on the text area in the target application first
+  - Switch to OCR or Hybrid mode for better browser support
+  - Some secure applications (like password managers) may block text extraction for security
+
+- **For OCR mode**:
+  - Ensure Screen Recording permission is granted
+  - Make sure the window is visible and not minimized
+  - OCR works best with clear, high-contrast text
+  - Try using a larger window size for better OCR accuracy
+
+- **For browsers**: Use OCR or Hybrid mode for best results
 
 ### Permission Prompts
 

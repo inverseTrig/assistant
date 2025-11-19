@@ -12,6 +12,7 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var items: [Item]
     @State private var textDisplayController = TextDisplayWindowController()
+    @AppStorage("extractionMethod") private var extractionMethod: String = "hybrid"
 
     var body: some View {
         NavigationSplitView {
@@ -65,6 +66,31 @@ struct ContentView: View {
                         .foregroundColor(.orange)
                         .padding(.top, 5)
 
+                    Divider()
+                        .padding(.vertical, 5)
+
+                    Text("Extraction Method")
+                        .font(.headline)
+
+                    Picker("Method", selection: $extractionMethod) {
+                        Text("Hybrid (Smart)").tag("hybrid")
+                        Text("Accessibility API").tag("accessibility")
+                        Text("OCR (Screen Capture)").tag("ocr")
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text(extractionMethodDescription)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 5)
+
+                    if extractionMethod == "ocr" || extractionMethod == "hybrid" {
+                        Text("Note: Screen Recording permission is required for OCR. Grant access in System Settings > Privacy & Security > Screen Recording")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                            .padding(.top, 5)
+                    }
+
                     Button(action: testTextExtraction) {
                         Label("Test Text Extraction", systemImage: "text.viewfinder")
                     }
@@ -97,8 +123,31 @@ struct ContentView: View {
         }
     }
 
+    private var extractionMethodDescription: String {
+        switch extractionMethod {
+        case "hybrid":
+            return "Tries Accessibility API first, falls back to OCR for browsers and complex apps. Best for general use."
+        case "accessibility":
+            return "Fast, uses native Accessibility API. Works best with native macOS apps and text editors."
+        case "ocr":
+            return "Uses screen capture and optical character recognition. Best for browsers and apps that don't expose text via Accessibility API."
+        default:
+            return ""
+        }
+    }
+
     private func testTextExtraction() {
-        let extractedText = AccessibilityTextExtractor.extractTextFromFocusedApp()
+        let method: AccessibilityTextExtractor.ExtractionMethod
+        switch extractionMethod {
+        case "accessibility":
+            method = .accessibility
+        case "ocr":
+            method = .ocr
+        default:
+            method = .hybrid
+        }
+
+        let extractedText = AccessibilityTextExtractor.extractTextFromFocusedApp(method: method)
         textDisplayController.show(text: extractedText)
     }
 }
