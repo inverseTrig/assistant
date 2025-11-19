@@ -11,6 +11,7 @@ import SwiftData
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var items: [Item]
+    @State private var textDisplayController = TextDisplayWindowController()
 
     var body: some View {
         NavigationSplitView {
@@ -33,7 +34,51 @@ struct ContentView: View {
                 }
             }
         } detail: {
-            Text("Select an item")
+            VStack(spacing: 20) {
+                Text("Text Extraction Assistant")
+                    .font(.title)
+                    .fontWeight(.bold)
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Hotkey Feature")
+                        .font(.headline)
+
+                    HStack(spacing: 5) {
+                        Text("Press")
+                        KeySymbol(text: "⌘")
+                        Text("+")
+                        KeySymbol(text: "⇧")
+                        Text("+")
+                        KeySymbol(text: "E")
+                        Text("to extract text from any application")
+                    }
+
+                    Text("The hotkey works globally across all applications. It will extract visible text content from the currently focused window using the macOS Accessibility API.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 5)
+
+                    Text("Note: You may need to grant Accessibility permissions in System Settings > Privacy & Security > Accessibility")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                        .padding(.top, 5)
+
+                    Button(action: testTextExtraction) {
+                        Label("Test Text Extraction", systemImage: "text.viewfinder")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .padding(.top, 10)
+                }
+                .frame(maxWidth: 400)
+                .padding()
+                .background(Color.secondary.opacity(0.1))
+                .cornerRadius(10)
+
+                Spacer()
+            }
+            .padding()
         }
     }
 
@@ -50,6 +95,26 @@ struct ContentView: View {
                 modelContext.delete(items[index])
             }
         }
+    }
+
+    private func testTextExtraction() {
+        let extractedText = AccessibilityTextExtractor.extractTextFromFocusedApp()
+        textDisplayController.show(text: extractedText)
+    }
+}
+
+// Helper view for displaying keyboard symbols
+struct KeySymbol: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(.body, design: .monospaced))
+            .fontWeight(.semibold)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.secondary.opacity(0.2))
+            .cornerRadius(5)
     }
 }
 
