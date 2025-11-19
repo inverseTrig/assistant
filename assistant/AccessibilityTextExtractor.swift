@@ -214,10 +214,12 @@ class AccessibilityTextExtractor {
         // Try modern ScreenCaptureKit first (macOS 12.3+)
         if #available(macOS 12.3, *) {
             diagnostics += "Trying ScreenCaptureKit (modern API)...\n"
-            if let (image, scDiag) = captureWithScreenCaptureKit(pid: pid, appName: app.localizedName ?? "Unknown") {
-                diagnostics += scDiag
+            let (image, scDiag) = captureWithScreenCaptureKit(pid: pid, appName: app.localizedName ?? "Unknown")
+            diagnostics += scDiag
+
+            if let capturedImage = image {
                 diagnostics += "✅ ScreenCaptureKit SUCCESS\n"
-                return (image, diagnostics)
+                return (capturedImage, diagnostics)
             } else {
                 diagnostics += "❌ ScreenCaptureKit failed, trying legacy methods...\n\n"
             }
@@ -363,11 +365,13 @@ class AccessibilityTextExtractor {
 
     /// Capture window using modern ScreenCaptureKit API
     @available(macOS 12.3, *)
-    private static func captureWithScreenCaptureKit(pid: pid_t, appName: String) -> (CGImage?, String)? {
+    private static func captureWithScreenCaptureKit(pid: pid_t, appName: String) -> (CGImage?, String) {
         var diagnostics = ""
         let semaphore = DispatchSemaphore(value: 0)
         var capturedImage: CGImage?
-        var error: Error?
+        var errorMessage: String?
+        var windowCount: Int = 0
+        var windowInfo: String?
 
         Task {
             do {
@@ -376,16 +380,15 @@ class AccessibilityTextExtractor {
 
                 // Find windows for our PID
                 let targetWindows = content.windows.filter { $0.owningApplication?.processID == pid }
-
-                diagnostics += "  ScreenCaptureKit found \(targetWindows.count) window(s) for PID \(pid)\n"
+                windowCount = targetWindows.count
 
                 guard let window = targetWindows.first(where: { $0.frame.width > 100 && $0.frame.height > 100 }) else {
-                    diagnostics += "  No suitable windows found\n"
+                    errorMessage = "No suitable windows found (all too small or none exist)"
                     semaphore.signal()
                     return
                 }
 
-                diagnostics += "  Capturing window: \(window.title ?? "Untitled") (\(Int(window.frame.width))x\(Int(window.frame.height)))\n"
+                windowInfo = "\(window.title ?? "Untitled") (\(Int(window.frame.width))x\(Int(window.frame.height)))"
 
                 // Create filter for specific window
                 let filter = SCContentFilter(desktopIndependentWindow: window)
@@ -399,8 +402,8 @@ class AccessibilityTextExtractor {
                 capturedImage = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
 
                 semaphore.signal()
-            } catch {
-                diagnostics += "  ScreenCaptureKit error: \(error.localizedDescription)\n"
+            } catch let error {
+                errorMessage = "ScreenCaptureKit error: \(error.localizedDescription)\nError details: \(error)"
                 semaphore.signal()
             }
         }
@@ -408,16 +411,29 @@ class AccessibilityTextExtractor {
         // Wait for completion (with timeout)
         let result = semaphore.wait(timeout: .now() + 5)
 
+        diagnostics += "  ScreenCaptureKit found \(windowCount) window(s) for PID \(pid)\n"
+
         if result == .timedOut {
-            diagnostics += "  ScreenCaptureKit timed out\n"
-            return nil
+            diagnostics += "  ScreenCaptureKit timed out after 5 seconds\n"
+            return (nil, diagnostics)
+        }
+
+        if let error = errorMessage {
+            diagnostics += "  \(error)\n"
+            return (nil, diagnostics)
+        }
+
+        if let info = windowInfo {
+            diagnostics += "  Capturing window: \(info)\n"
         }
 
         if let image = capturedImage {
+            diagnostics += "  Capture completed successfully\n"
             return (image, diagnostics)
         }
 
-        return nil
+        diagnostics += "  Failed to capture image (capturedImage is nil)\n"
+        return (nil, diagnostics)
     }
 
     /// Perform OCR on a captured image
