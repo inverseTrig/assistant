@@ -10,6 +10,7 @@ A macOS application that allows you to extract text content from any application
   - **Accessibility API**: Fast extraction using native macOS Accessibility API
   - **OCR Mode**: Screen capture with optical character recognition for browsers and apps that don't expose text
 - **Browser Support**: Works with Safari, Chrome, Firefox, and other browsers using OCR technology
+- **Intelligent Content Filtering**: Automatically filters out navigation, ads, and UI elements to focus on main content
 - **Floating Display Window**: Shows extracted text in a floating, resizable window
 - **Copy to Clipboard**: Easily copy extracted text with one click
 - **Pin Window**: Keep the extraction window on top of other windows
@@ -71,6 +72,24 @@ In the main app window, you can select from three extraction methods:
    - Works with all browsers (Safari, Chrome, Firefox, etc.)
    - Slower but more universal
 
+### Content Focus
+
+Toggle **"Focus on main content"** to control what text is extracted:
+
+- **Enabled (Default)**: Intelligently filters the extracted text to show only main content
+  - Removes navigation bars, menus, and sidebars
+  - Filters out ads and promotional content
+  - Excludes UI elements (buttons, labels)
+  - Focuses on the largest content block (articles, main text)
+  - Perfect for reading articles, documentation, or web pages
+
+- **Disabled**: Extracts all text without filtering
+  - Gets every piece of text from the window
+  - Useful when you need complete extraction
+  - Good for debugging or specific use cases
+
+The filtering works with all extraction methods and is especially effective for browsers and complex web pages.
+
 ### Using the Global Hotkey
 
 1. Run the Assistant app
@@ -114,18 +133,30 @@ In the main app window, you can select from three extraction methods:
      - Tries Accessibility API first for performance
      - Falls back to OCR if limited results detected
 
-3. **TextDisplayWindow.swift**: Displays extracted text in a floating window
+3. **ContentFilter.swift**: Intelligent content filtering system
+   - **Text Filtering**: Removes common UI patterns, navigation, ads
+     - Filters short lines, URLs, copyright notices
+     - Removes social media buttons and common UI text
+     - Extracts main content blocks
+   - **OCR Observation Filtering**: Spatial filtering for OCR results
+     - Calculates text density across the screen
+     - Identifies main content region
+     - Filters observations outside the main region
+   - **Smart Patterns**: Uses regex to identify and filter UI elements
+   - Works with both Accessibility API and OCR modes
+
+4. **TextDisplayWindow.swift**: Displays extracted text in a floating window
    - Floating window with pin capability
    - Monospaced font for better readability
    - Text selection enabled
    - Copy to clipboard functionality
 
-4. **Info.plist**: Contains privacy usage descriptions
+5. **Info.plist**: Contains privacy usage descriptions
    - NSAccessibilityUsageDescription (for Accessibility API)
    - NSAppleEventsUsageDescription (for Apple Events)
    - NSScreenCaptureUsageDescription (for OCR screen capture)
 
-5. **assistant.entitlements**: App capabilities
+6. **assistant.entitlements**: App capabilities
    - App Sandbox disabled for global hotkeys
    - Apple Events automation enabled
 

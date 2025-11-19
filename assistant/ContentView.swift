@@ -13,6 +13,7 @@ struct ContentView: View {
     @Query private var items: [Item]
     @State private var textDisplayController = TextDisplayWindowController()
     @AppStorage("extractionMethod") private var extractionMethod: String = "hybrid"
+    @AppStorage("focusMainContent") private var focusMainContent: Bool = true
 
     var body: some View {
         NavigationSplitView {
@@ -91,6 +92,22 @@ struct ContentView: View {
                             .padding(.top, 5)
                     }
 
+                    Divider()
+                        .padding(.vertical, 5)
+
+                    Text("Content Focus")
+                        .font(.headline)
+
+                    Toggle(isOn: $focusMainContent) {
+                        Text("Focus on main content")
+                    }
+                    .toggleStyle(.switch)
+
+                    Text(focusMainContent ? "Filters out navigation, ads, and UI elements to show only the main content." : "Extracts all text from the page without filtering.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 5)
+
                     Button(action: testTextExtraction) {
                         Label("Test Text Extraction", systemImage: "text.viewfinder")
                     }
@@ -147,7 +164,8 @@ struct ContentView: View {
             method = .hybrid
         }
 
-        let extractedText = AccessibilityTextExtractor.extractTextFromFocusedApp(method: method)
+        let filterMode: ContentFilter.FilterMode = focusMainContent ? .mainContent : .allText
+        let extractedText = AccessibilityTextExtractor.extractTextFromFocusedApp(method: method, filterMode: filterMode)
         textDisplayController.show(text: extractedText)
     }
 }

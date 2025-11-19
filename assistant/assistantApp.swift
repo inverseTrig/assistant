@@ -57,8 +57,12 @@ struct assistantApp: App {
             method = .hybrid
         }
 
+        // Get the user's preferred content focus (default to true)
+        let focusMainContent = UserDefaults.standard.object(forKey: "focusMainContent") as? Bool ?? true
+        let filterMode: ContentFilter.FilterMode = focusMainContent ? .mainContent : .allText
+
         // Extract text from the focused application
-        let extractedText = AccessibilityTextExtractor.extractTextFromFocusedApp(method: method)
+        let extractedText = AccessibilityTextExtractor.extractTextFromFocusedApp(method: method, filterMode: filterMode)
 
         // Display the extracted text
         textDisplayController.show(text: extractedText)

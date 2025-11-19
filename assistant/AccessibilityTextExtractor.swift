@@ -24,23 +24,23 @@ class AccessibilityTextExtractor {
     }
 
     /// Extract text from the currently focused application using specified method
-    static func extractTextFromFocusedApp(method: ExtractionMethod = .hybrid) -> String {
+    static func extractTextFromFocusedApp(method: ExtractionMethod = .hybrid, filterMode: ContentFilter.FilterMode = .mainContent) -> String {
         guard let frontmostApp = NSWorkspace.shared.frontmostApplication else {
             return "No frontmost application found."
         }
 
         switch method {
         case .accessibility:
-            return extractUsingAccessibility(app: frontmostApp)
+            return extractUsingAccessibility(app: frontmostApp, filterMode: filterMode)
         case .ocr:
-            return extractUsingOCR(app: frontmostApp)
+            return extractUsingOCR(app: frontmostApp, filterMode: filterMode)
         case .hybrid:
             // Try accessibility first
-            let accessibilityText = extractUsingAccessibility(app: frontmostApp, skipPermissionCheck: true)
+            let accessibilityText = extractUsingAccessibility(app: frontmostApp, skipPermissionCheck: true, filterMode: filterMode)
 
             // If accessibility returns limited or no content, use OCR
             if accessibilityText.isEmpty || accessibilityText.contains("No text content found") || accessibilityText.count < 100 {
-                return extractUsingOCR(app: frontmostApp)
+                return extractUsingOCR(app: frontmostApp, filterMode: filterMode)
             }
 
             return accessibilityText
@@ -48,7 +48,7 @@ class AccessibilityTextExtractor {
     }
 
     /// Extract text using Accessibility API
-    private static func extractUsingAccessibility(app: NSRunningApplication, skipPermissionCheck: Bool = false) -> String {
+    private static func extractUsingAccessibility(app: NSRunningApplication, skipPermissionCheck: Bool = false, filterMode: ContentFilter.FilterMode = .mainContent) -> String {
         if !skipPermissionCheck {
             guard checkAccessibilityPermissions() else {
                 requestAccessibilityPermissions()
@@ -89,17 +89,21 @@ class AccessibilityTextExtractor {
             }
         }
 
-        if extractedText.isEmpty {
+        // Apply content filtering
+        let filteredText = ContentFilter.filterText(extractedText, mode: filterMode)
+
+        if filteredText.isEmpty {
             extractedText = "No text content found in the current view.\n\nApplication: \(app.localizedName ?? "Unknown")"
         } else {
-            extractedText = "Text from: \(app.localizedName ?? "Unknown") [Accessibility API]\n\n" + extractedText
+            let modeLabel = filterMode == .mainContent ? "Main Content" : "All Text"
+            extractedText = "Text from: \(app.localizedName ?? "Unknown") [Accessibility API - \(modeLabel)]\n\n" + filteredText
         }
 
         return extractedText
     }
 
     /// Extract text using OCR (screen capture + Vision framework)
-    private static func extractUsingOCR(app: NSRunningApplication) -> String {
+    private static func extractUsingOCR(app: NSRunningApplication, filterMode: ContentFilter.FilterMode = .mainContent) -> String {
         // Check screen recording permissions (required for window capture on macOS 10.15+)
         guard checkScreenRecordingPermissions() else {
             requestScreenRecordingPermissions()
@@ -111,14 +115,15 @@ class AccessibilityTextExtractor {
             return "Failed to capture window for OCR.\n\nApplication: \(app.localizedName ?? "Unknown")"
         }
 
-        // Perform OCR on the captured image
-        let ocrText = performOCR(on: windowImage)
+        // Perform OCR on the captured image with filtering
+        let ocrText = performOCR(on: windowImage, filterMode: filterMode)
 
         if ocrText.isEmpty {
             return "No text detected via OCR.\n\nApplication: \(app.localizedName ?? "Unknown")"
         }
 
-        return "Text from: \(app.localizedName ?? "Unknown") [OCR]\n\n" + ocrText
+        let modeLabel = filterMode == .mainContent ? "Main Content" : "All Text"
+        return "Text from: \(app.localizedName ?? "Unknown") [OCR - \(modeLabel)]\n\n" + ocrText
     }
 
     /// Check if screen recording permissions are granted
@@ -179,8 +184,9 @@ class AccessibilityTextExtractor {
     }
 
     /// Perform OCR on a captured image
-    private static func performOCR(on image: CGImage) -> String {
+    private static func performOCR(on image: CGImage, filterMode: ContentFilter.FilterMode = .mainContent) -> String {
         var recognizedText = ""
+        var allObservations: [VNRecognizedTextObservation] = []
         let semaphore = DispatchSemaphore(value: 0)
 
         let request = VNRecognizeTextRequest { request, error in
@@ -195,8 +201,14 @@ class AccessibilityTextExtractor {
                 return
             }
 
+            // Store observations for filtering
+            allObservations = observations
+
+            // Apply content filtering to observations
+            let filteredObservations = ContentFilter.filterOCRObservations(observations, mode: filterMode)
+
             // Sort observations by vertical position (top to bottom, left to right)
-            let sortedObservations = observations.sorted { obs1, obs2 in
+            let sortedObservations = filteredObservations.sorted { obs1, obs2 in
                 let bounds1 = obs1.boundingBox
                 let bounds2 = obs2.boundingBox
 
