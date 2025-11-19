@@ -3,6 +3,7 @@ import ApplicationServices
 import AppKit
 import Vision
 import CoreGraphics
+import ScreenCaptureKit
 
 class AccessibilityTextExtractor {
 
@@ -210,6 +211,21 @@ class AccessibilityTextExtractor {
         var diagnostics = ""
         let pid = app.processIdentifier
 
+        // Try modern ScreenCaptureKit first (macOS 12.3+)
+        if #available(macOS 12.3, *) {
+            diagnostics += "Trying ScreenCaptureKit (modern API)...\n"
+            if let (image, scDiag) = captureWithScreenCaptureKit(pid: pid, appName: app.localizedName ?? "Unknown") {
+                diagnostics += scDiag
+                diagnostics += "✅ ScreenCaptureKit SUCCESS\n"
+                return (image, diagnostics)
+            } else {
+                diagnostics += "❌ ScreenCaptureKit failed, trying legacy methods...\n\n"
+            }
+        }
+
+        // Fallback to legacy CGWindowListCreateImage
+        diagnostics += "Using CGWindowListCreateImage (legacy API)...\n"
+
         // Get list of windows for the frontmost application
         let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
 
@@ -275,7 +291,7 @@ class AccessibilityTextExtractor {
             return area1 > area2
         }
 
-        diagnostics += "Capture attempts:\n"
+        diagnostics += "Legacy capture attempts:\n"
 
         // Try multiple capture strategies
         // Strategy 1: Try capturing individual window with best resolution
@@ -343,6 +359,65 @@ class AccessibilityTextExtractor {
 
         diagnostics += "\n❌ All \(appWindows.count * 3 + 1) capture strategies failed\n"
         return (nil, diagnostics)
+    }
+
+    /// Capture window using modern ScreenCaptureKit API
+    @available(macOS 12.3, *)
+    private static func captureWithScreenCaptureKit(pid: pid_t, appName: String) -> (CGImage?, String)? {
+        var diagnostics = ""
+        let semaphore = DispatchSemaphore(value: 0)
+        var capturedImage: CGImage?
+        var error: Error?
+
+        Task {
+            do {
+                // Get available content
+                let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+
+                // Find windows for our PID
+                let targetWindows = content.windows.filter { $0.owningApplication?.processID == pid }
+
+                diagnostics += "  ScreenCaptureKit found \(targetWindows.count) window(s) for PID \(pid)\n"
+
+                guard let window = targetWindows.first(where: { $0.frame.width > 100 && $0.frame.height > 100 }) else {
+                    diagnostics += "  No suitable windows found\n"
+                    semaphore.signal()
+                    return
+                }
+
+                diagnostics += "  Capturing window: \(window.title ?? "Untitled") (\(Int(window.frame.width))x\(Int(window.frame.height)))\n"
+
+                // Create filter for specific window
+                let filter = SCContentFilter(desktopIndependentWindow: window)
+
+                // Configure capture
+                let config = SCStreamConfiguration()
+                config.width = Int(window.frame.width) * 2  // Retina resolution
+                config.height = Int(window.frame.height) * 2
+
+                // Capture screenshot
+                capturedImage = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+
+                semaphore.signal()
+            } catch {
+                diagnostics += "  ScreenCaptureKit error: \(error.localizedDescription)\n"
+                semaphore.signal()
+            }
+        }
+
+        // Wait for completion (with timeout)
+        let result = semaphore.wait(timeout: .now() + 5)
+
+        if result == .timedOut {
+            diagnostics += "  ScreenCaptureKit timed out\n"
+            return nil
+        }
+
+        if let image = capturedImage {
+            return (image, diagnostics)
+        }
+
+        return nil
     }
 
     /// Perform OCR on a captured image
