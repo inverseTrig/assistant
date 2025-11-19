@@ -156,27 +156,58 @@ class AccessibilityTextExtractor {
 
         guard let windows = windowList else { return nil }
 
-        // Find the frontmost window for this app
-        var targetWindowID: CGWindowID?
+        // Collect all windows for this app
+        var appWindows: [(id: CGWindowID, layer: Int, bounds: CGRect)] = []
+
         for window in windows {
             if let windowPID = window[kCGWindowOwnerPID as String] as? pid_t,
                windowPID == pid,
-               let windowLayer = window[kCGWindowLayer as String] as? Int,
-               windowLayer == 0 {
-                if let windowID = window[kCGWindowNumber as String] as? CGWindowID {
-                    targetWindowID = windowID
-                    break
+               let windowID = window[kCGWindowNumber as String] as? CGWindowID,
+               let windowLayer = window[kCGWindowLayer as String] as? Int {
+
+                // Get window bounds to ensure it has valid size
+                if let boundsDict = window[kCGWindowBounds as String] as? [String: Any],
+                   let x = boundsDict["X"] as? CGFloat,
+                   let y = boundsDict["Y"] as? CGFloat,
+                   let width = boundsDict["Width"] as? CGFloat,
+                   let height = boundsDict["Height"] as? CGFloat {
+
+                    let bounds = CGRect(x: x, y: y, width: width, height: height)
+
+                    // Only consider windows with reasonable size (at least 100x100)
+                    if width > 100 && height > 100 {
+                        appWindows.append((id: windowID, layer: windowLayer, bounds: bounds))
+                    }
                 }
             }
         }
 
-        guard let windowID = targetWindowID else { return nil }
+        guard !appWindows.isEmpty else { return nil }
+
+        // Sort windows: prefer layer 0, then by size (larger windows first)
+        appWindows.sort { w1, w2 in
+            // Prefer layer 0
+            if w1.layer == 0 && w2.layer != 0 {
+                return true
+            }
+            if w1.layer != 0 && w2.layer == 0 {
+                return false
+            }
+
+            // For same layer, prefer larger windows
+            let area1 = w1.bounds.width * w1.bounds.height
+            let area2 = w2.bounds.width * w2.bounds.height
+            return area1 > area2
+        }
+
+        // Use the best window we found
+        let targetWindowID = appWindows[0].id
 
         // Capture the window
         let windowImage = CGWindowListCreateImage(
             .null,
             .optionIncludingWindow,
-            windowID,
+            targetWindowID,
             [.bestResolution, .boundsIgnoreFraming]
         )
 
