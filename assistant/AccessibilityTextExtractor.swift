@@ -412,8 +412,21 @@ class AccessibilityTextExtractor {
                 capturedImage = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
 
                 semaphore.signal()
-            } catch let error {
-                errorMessage = "ScreenCaptureKit error: \(error.localizedDescription)\nError details: \(error)"
+            } catch let error as NSError {
+                // Check for specific error codes
+                if error.domain == "com.apple.ScreenCaptureKit.SCStreamErrorDomain" && error.code == -3801 {
+                    errorMessage = "⚠️ SCREEN RECORDING PERMISSION NOT GRANTED\n"
+                    errorMessage! += "  ScreenCaptureKit requires Screen Recording permission.\n"
+                    errorMessage! += "  \n"
+                    errorMessage! += "  TO FIX:\n"
+                    errorMessage! += "  1. Open System Settings\n"
+                    errorMessage! += "  2. Go to Privacy & Security > Screen Recording\n"
+                    errorMessage! += "  3. Make sure this app is listed and ENABLED (checked)\n"
+                    errorMessage! += "  4. Restart this app\n"
+                } else {
+                    errorMessage = "ScreenCaptureKit error: \(error.localizedDescription)\n"
+                    errorMessage! += "Error code: \(error.code) in domain: \(error.domain)\n"
+                }
                 semaphore.signal()
             }
         }
