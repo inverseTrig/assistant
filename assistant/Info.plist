@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>This app needs to access Apple Events to extract text from other applications.</string>
+	<key>NSAccessibilityUsageDescription</key>
+	<string>This app uses Accessibility API to extract text content from the currently focused application when you press the hotkey.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>This app uses screen capture with OCR to extract text from browser windows and other applications that don't expose their content through Accessibility API.</string>
+</dict>
+</plist>
