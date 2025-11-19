@@ -13,6 +13,9 @@ class AccessibilityTextExtractor {
         case hybrid
     }
 
+    // Track if we've already requested screen recording permission to avoid spamming the user
+    private static var hasRequestedScreenRecordingPermission = false
+
     /// Check if accessibility permissions are granted
     static func checkAccessibilityPermissions() -> Bool {
         return AXIsProcessTrusted()
@@ -199,6 +202,13 @@ class AccessibilityTextExtractor {
 
     /// Request screen recording permissions
     private static func requestScreenRecordingPermissions() {
+        // Only request once to avoid annoying the user with repeated prompts
+        guard !hasRequestedScreenRecordingPermission else {
+            return
+        }
+
+        hasRequestedScreenRecordingPermission = true
+
         // The system will automatically prompt when we try to capture
         // We can also direct the user to system settings
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
