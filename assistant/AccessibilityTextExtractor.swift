@@ -129,11 +129,38 @@ class AccessibilityTextExtractor {
     /// Check if screen recording permissions are granted
     private static func checkScreenRecordingPermissions() -> Bool {
         // On macOS 10.15+, we need screen recording permission to capture windows
-        // We'll try to capture and see if it works
         if #available(macOS 10.15, *) {
-            // Attempt a test capture to check permissions
-            let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
-            return windowList != nil && !windowList!.isEmpty
+            // Try to get window list - if we can get it, we likely have permission
+            guard let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+                print("Failed to get window list - possible permission issue")
+                return false
+            }
+
+            if windowList.isEmpty {
+                print("Window list is empty - possible permission issue")
+                return false
+            }
+
+            // Additional check: Try to see if we can get window names
+            // If we can't see window names for other apps, we likely don't have screen recording permission
+            var canSeeOtherAppWindows = false
+            let currentPID = ProcessInfo.processInfo.processIdentifier
+
+            for window in windowList {
+                if let windowPID = window[kCGWindowOwnerPID as String] as? pid_t,
+                   windowPID != currentPID,
+                   let _ = window[kCGWindowBounds as String] as? [String: Any] {
+                    canSeeOtherAppWindows = true
+                    break
+                }
+            }
+
+            if !canSeeOtherAppWindows {
+                print("Cannot see other app windows - screen recording permission likely not granted")
+                // Don't return false here as we might still be able to capture our own app
+            }
+
+            return true
         }
         return true
     }
@@ -154,10 +181,13 @@ class AccessibilityTextExtractor {
         // Get list of windows for the frontmost application
         let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
 
-        guard let windows = windowList else { return nil }
+        guard let windows = windowList else {
+            print("Failed to get window list")
+            return nil
+        }
 
         // Collect all windows for this app
-        var appWindows: [(id: CGWindowID, layer: Int, bounds: CGRect)] = []
+        var appWindows: [(id: CGWindowID, layer: Int, bounds: CGRect, name: String)] = []
 
         for window in windows {
             if let windowPID = window[kCGWindowOwnerPID as String] as? pid_t,
@@ -173,16 +203,23 @@ class AccessibilityTextExtractor {
                    let height = boundsDict["Height"] as? CGFloat {
 
                     let bounds = CGRect(x: x, y: y, width: width, height: height)
+                    let windowName = window[kCGWindowName as String] as? String ?? ""
 
                     // Only consider windows with reasonable size (at least 100x100)
                     if width > 100 && height > 100 {
-                        appWindows.append((id: windowID, layer: windowLayer, bounds: bounds))
+                        appWindows.append((id: windowID, layer: windowLayer, bounds: bounds, name: windowName))
+                        print("Found window: ID=\(windowID), Layer=\(windowLayer), Size=\(width)x\(height), Name=\(windowName)")
                     }
                 }
             }
         }
 
-        guard !appWindows.isEmpty else { return nil }
+        guard !appWindows.isEmpty else {
+            print("No valid windows found for PID \(pid)")
+            return nil
+        }
+
+        print("Found \(appWindows.count) windows for \(app.localizedName ?? "app")")
 
         // Sort windows: prefer layer 0, then by size (larger windows first)
         appWindows.sort { w1, w2 in
@@ -200,18 +237,68 @@ class AccessibilityTextExtractor {
             return area1 > area2
         }
 
-        // Use the best window we found
-        let targetWindowID = appWindows[0].id
+        // Try multiple capture strategies
+        // Strategy 1: Try capturing individual window with best resolution
+        for (index, window) in appWindows.prefix(3).enumerated() {
+            print("Attempt \(index + 1): Trying to capture window ID \(window.id)")
 
-        // Capture the window
-        let windowImage = CGWindowListCreateImage(
-            .null,
-            .optionIncludingWindow,
-            targetWindowID,
-            [.bestResolution, .boundsIgnoreFraming]
-        )
+            if let image = CGWindowListCreateImage(
+                .null,
+                .optionIncludingWindow,
+                window.id,
+                [.bestResolution, .boundsIgnoreFraming]
+            ) {
+                print("Successfully captured window using strategy 1")
+                return image
+            }
+        }
 
-        return windowImage
+        // Strategy 2: Try capturing without boundsIgnoreFraming
+        for (index, window) in appWindows.prefix(3).enumerated() {
+            print("Attempt (alt): Trying window ID \(window.id) without boundsIgnoreFraming")
+
+            if let image = CGWindowListCreateImage(
+                window.bounds,
+                .optionIncludingWindow,
+                window.id,
+                [.bestResolution]
+            ) {
+                print("Successfully captured window using strategy 2")
+                return image
+            }
+        }
+
+        // Strategy 3: Try capturing with nominal resolution (faster, might work better)
+        for (index, window) in appWindows.prefix(3).enumerated() {
+            print("Attempt (nominal): Trying window ID \(window.id) with nominal resolution")
+
+            if let image = CGWindowListCreateImage(
+                .null,
+                .optionIncludingWindow,
+                window.id,
+                [.nominalResolution]
+            ) {
+                print("Successfully captured window using strategy 3 (nominal resolution)")
+                return image
+            }
+        }
+
+        // Strategy 4: Try using the window bounds as rect
+        if let firstWindow = appWindows.first {
+            print("Trying bounded capture of first window")
+            if let image = CGWindowListCreateImage(
+                firstWindow.bounds,
+                .optionIncludingWindow,
+                firstWindow.id,
+                []
+            ) {
+                print("Successfully captured using strategy 4 (bounded)")
+                return image
+            }
+        }
+
+        print("All capture strategies failed")
+        return nil
     }
 
     /// Perform OCR on a captured image
